@@ -45,7 +45,7 @@ img.src {
 /* GALERÍA */
 .gallery-photo {
   width: 300px;
-  height: auto; /* allow natural height so the full image is visible */
+  height: auto; 
   object-fit: contain; /* contain keeps the whole image visible without distortion */
   display: block;
 }
@@ -59,7 +59,10 @@ img.src {
 
 /* CTA */
 .cta {
-  background: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1800') center/cover no-repeat;
+  background-image: url('https://scontent.fanf5-1.fna.fbcdn.net/v/t1.15752-9/552804169_1325301339324786_1989280527311483093_n.jpg?_nc_cat=106&ccb=1-7&_nc_sid=0024fc&_nc_ohc=yoV9aqUXksYQ7kNvwHHi7dm&_nc_oc=Adlggq4HkO0dQ7hBV6CUD-gnRLNuj0NAVpiBuAGEeFG7uuU73mfJoiaHbdWh_KrYw18&_nc_ad=z-m&_nc_cid=1364&_nc_zt=23&_nc_ht=scontent.fanf5-1.fna&oh=03_Q7cD3gFE9urVFwaDs481BXrOXWWzjXEX04tp3hd-Izcdck9XPQ&oe=6907C542');
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: 100% auto; /* stretch to full width, keep aspect ratio so the image is shown complete */
 }
 .cta .cta-inner {
   max-width: 1140px;
