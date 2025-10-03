@@ -1,0 +1,68 @@
+html, body, #root { height: 100%; width: 100%; }
+body { margin: 0; overflow-x: hidden; }
+
+.full-bleed {
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  width: 100vw;
+  max-width: 100vw;
+  overflow: hidden;
+}
+
+/* HERO */
+.hero-slide {
+  height: 75vh; /* a bit taller so more of the image is visible */
+  background-size: 100% 100%; /* stretch image completely to fill the hero (may distort) */
+  background-repeat: no-repeat;
+  background-position: center;
+  position: relative;
+}
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(0,0,0,.55), rgba(0,0,0,.1) 60%);
+}
+
+/* HISTORIA */
+.fade-image {
+  background-size: cover;
+  background-position: center;
+  -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,1) 70%, rgba(0,0,0,0) 100%);
+  mask-image: linear-gradient(to right, rgba(0,0,0,1) 70%, rgba(0,0,0,0) 100%);
+}
+
+img.src {
+  height: 100%;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* GALERÍA */
+.gallery-photo {
+  width: 300px;
+  height: auto; /* allow natural height so the full image is visible */
+  object-fit: contain; /* contain keeps the whole image visible without distortion */
+  display: block;
+}
+.gallery-card {
+  transition: transform .25s ease, box-shadow .25s ease;
+}
+.gallery-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 1rem 2rem rgba(0,0,0,.12);
+}
+
+/* CTA */
+.cta {
+  background: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1800') center/cover no-repeat;
+}
+.cta .cta-inner {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 56px 16px;
+}
