@@ -14,9 +14,121 @@ export default async function handler(req, res) {
     }
 
     // Determine visitor IP (best-effort behind proxies)
-    const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
+    // Prefer standard proxy headers; fall back to socket remote address.
+    const headerIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.headers['cf-connecting-ip'] || '';
+    let ip = (Array.isArray(headerIp) ? headerIp.join(',') : String(headerIp || ''))
+      .split(',')[0]
+      .trim();
+    if (!ip) {
+      ip = req.socket && (req.socket.remoteAddress || req.connection && req.connection.remoteAddress) || '';
+    }
+    // Normalize IPv4-mapped IPv6 (e.g. ::ffff:1.2.3.4)
+    if (ip && ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
+
+    // Optional debug: dump headers to logs when DEBUG_TRACK=1 (useful during setup)
+    try {
+      if (process.env.DEBUG_TRACK === '1') {
+        console.debug('track headers sample', {
+          ipExtracted: ip,
+          xff: req.headers['x-forwarded-for'],
+          xRealIp: req.headers['x-real-ip'],
+          cfConnectingIp: req.headers['cf-connecting-ip'],
+          remoteAddr: req.socket && req.socket.remoteAddress
+        });
+      }
+    } catch (e) {
+      // ignore logging errors
+    }
     const ua = (req.headers['user-agent'] || '').toString().replace(/\n/g, ' ');
-    const line = `${new Date().toISOString()} - ${ip} - ${ua}\n`;
+
+    // Generate a short unique code for this entry
+    const code = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`.toUpperCase();
+
+    // Simple device detection from user-agent
+    let device = 'Desktop';
+    try {
+      if (/Mobi|Android|iPhone|iPod/i.test(ua)) device = 'Mobile';
+      else if (/Tablet|iPad/i.test(ua)) device = 'Tablet';
+    } catch (e) {}
+
+    // Lookup geolocation (free service ip-api.com). If it fails, leave fields empty.
+    let geo = {};
+    try {
+      const geoRes = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,message,country,regionName,city,zip,isp,query`);
+      if (geoRes.ok) {
+        const g = await geoRes.json();
+        if (g && g.status === 'success') {
+          geo = {
+            country: g.country || '',
+            region: g.regionName || '',
+            city: g.city || '',
+            zip: g.zip || '',
+            isp: g.isp || ''
+          };
+        } else {
+          // if lookup failed, include message
+          geo = { message: g && g.message ? g.message : 'lookup_failed' };
+        }
+      }
+    } catch (e) {
+      geo = { message: 'lookup_error' };
+    }
+
+    // Detect OS, browser and more details from user-agent (best-effort)
+    let os = '';
+    let browser = '';
+    let model = '';
+    try {
+      const mAndroid = ua.match(/Android\s+([0-9\.]+)/i);
+      const miOS = ua.match(/iPhone OS\s*([0-9_]+)/i) || ua.match(/CPU OS\s*([0-9_]+)/i);
+      if (mAndroid) os = `Android ${mAndroid[1]}`;
+      else if (miOS) os = `iOS ${miOS[1].replace(/_/g, '.')}`;
+      else if (/Windows NT/i.test(ua)) os = 'Windows';
+      else if (/Mac OS X/i.test(ua)) os = 'macOS';
+      else if (/Linux/i.test(ua)) os = 'Linux';
+
+      if (/Edg\//i.test(ua)) browser = (ua.match(/Edg\/([0-9\.]+)/i)||[])[1] ? `Edge ${(ua.match(/Edg\/([0-9\.]+)/i)||[])[1]}` : 'Edge';
+      else if (/OPR\//i.test(ua)) browser = (ua.match(/OPR\/([0-9\.]+)/i)||[])[1] ? `Opera ${(ua.match(/OPR\/([0-9\.]+)/i)||[])[1]}` : 'Opera';
+      else if (/Chrome\//i.test(ua)) browser = (ua.match(/Chrome\/([0-9\.]+)/i)||[])[1] ? `Chrome ${(ua.match(/Chrome\/([0-9\.]+)/i)||[])[1]}` : 'Chrome';
+      else if (/Safari\//i.test(ua) && /Version\//i.test(ua)) browser = (ua.match(/Version\/([0-9\.]+)/i)||[])[1] ? `Safari ${(ua.match(/Version\/([0-9\.]+)/i)||[])[1]}` : 'Safari';
+      else if (/Firefox\//i.test(ua)) browser = (ua.match(/Firefox\/([0-9\.]+)/i)||[])[1] ? `Firefox ${(ua.match(/Firefox\/([0-9\.]+)/i)||[])[1]}` : 'Firefox';
+
+      // model detection hints
+      if (/iPhone/i.test(ua)) model = 'iPhone';
+      else if (/iPad/i.test(ua)) model = 'iPad';
+      else {
+        const m = ua.match(/Android.+;\s*([^;\)]+)/i);
+        if (m && m[1]) model = m[1].trim();
+      }
+    } catch (e) {}
+
+    // Build a readable, ordered entry block
+    const entry = [];
+    entry.push(`CODIGO_IP: ${code}`);
+    entry.push(`IP: ${ip}`);
+    // Date/time in Chile timezone
+    try {
+      const fechaCL = new Date().toLocaleString('es-CL', { timeZone: 'America/Santiago', hour12: false });
+      entry.push(`FECHA: ${fechaCL}`);
+    } catch (e) {
+      entry.push(`FECHA: ${new Date().toISOString()}`);
+    }
+    entry.push(`DISPOSITIVO: ${device}`);
+    if (model) entry.push(`MODELO: ${model}`);
+    if (os) entry.push(`SISTEMA: ${os}`);
+    if (browser) entry.push(`NAVEGADOR: ${browser}`);
+    entry.push(`USER_AGENT: ${ua}`);
+    if (geo.country || geo.region || geo.city) {
+      entry.push(`PAIS: ${geo.country || ''}`);
+      entry.push(`REGION: ${geo.region || ''}`);
+      entry.push(`CIUDAD: ${geo.city || ''}`);
+      entry.push(`ZIP: ${geo.zip || ''}`);
+      entry.push(`ISP: ${geo.isp || ''}`);
+    } else if (geo.message) {
+      entry.push(`GEO_ERROR: ${geo.message}`);
+    }
+    entry.push('---');
+  const entryText = entry.join('\n') + '\n';
 
     // If no gistId configured, create a new gist with the first line and return its id
     if (!gistId) {
@@ -28,7 +140,7 @@ export default async function handler(req, res) {
             Accept: 'application/vnd.github+json',
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ files: { 'ips.txt': { content: line } }, public: false, description: 'IPs log (created by site)' })
+          body: JSON.stringify({ files: { 'ips.txt': { content: entryText } }, public: false, description: 'IPs log (created by site)' })
         });
         if (!createRes.ok) {
           const cb = await createRes.text();
@@ -67,7 +179,7 @@ export default async function handler(req, res) {
               Accept: 'application/vnd.github+json',
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ files: { 'ips.txt': { content: line } }, public: false, description: 'IPs log (created by site)' })
+            body: JSON.stringify({ files: { 'ips.txt': { content: entryText } }, public: false, description: 'IPs log (created by site)' })
           });
           if (!createRes.ok) {
             const cb = await createRes.text();
@@ -89,15 +201,15 @@ export default async function handler(req, res) {
     const gist = await gistRes.json();
     // Ensure the file exists or pick the first file
     const fileName = Object.keys(gist.files).includes('ips.txt') ? 'ips.txt' : Object.keys(gist.files)[0];
-    const current = (gist.files[fileName] && gist.files[fileName].content) ? gist.files[fileName].content : '';
+  const current = (gist.files[fileName] && gist.files[fileName].content) ? gist.files[fileName].content : '';
 
-    const updated = current + line;
+  const updated = current + entryText;
 
     // Update gist with appended content
     const updateRes = await fetch(`https://api.github.com/gists/${gistId}`, {
       method: 'PATCH',
       headers: {
-        Authorization: `token ${token}`,
+        Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json',
         'Content-Type': 'application/json'
       },
