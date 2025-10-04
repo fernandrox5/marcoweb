@@ -1,7 +1,14 @@
+import React, { useEffect } from 'react'
 import { Navbar, Nav, Button, Carousel, Container, Row, Col, Card, Form } from "react-bootstrap";
 import { FiPhone, FiMail } from "react-icons/fi"; // usando react-icons (npm i react-icons)
 
 function App() {
+  useEffect(() => {
+    // Notify serverless endpoint about a visit (best-effort)
+    try {
+      fetch('/api/track', { method: 'POST', keepalive: true }).catch(() => {});
+    } catch (e) {}
+  }, []);
   // HERO: cambia estas imágenes por las tuyas
   const heroSlides = [
     { src: "https://scontent.fanf5-1.fna.fbcdn.net/v/t1.15752-9/552681415_1152885093439543_1338208200375758118_n.jpg?_nc_cat=105&ccb=1-7&_nc_sid=0024fc&_nc_ohc=egW4bY-2fTwQ7kNvwHYH0KT&_nc_oc=AdmtL0YhslKH13JtL7ej8Pxd0nq-CYbjJjgfp9mWJPB5MPbeV4KxUSPCacrAEI8xWPs&_nc_ad=z-m&_nc_cid=1364&_nc_zt=23&_nc_ht=scontent.fanf5-1.fna&oh=03_Q7cD3gHYyEftFl3sTcDzwHe6yY6IinUYgz7IyHkDYUX3HCFIUw&oe=6907E1B5",
@@ -167,7 +174,17 @@ function App() {
 
       {/* FOOTER SIMPLE */}
       <footer className="py-4 text-center text-muted">
-        <Container>© {new Date().getFullYear()} Marco · todos los derechos reservados</Container>
+        <Container>
+          © {new Date().getFullYear()} Marco · todos los derechos reservados
+          <div className="mt-2">
+            <Button variant="link" size="sm" onClick={() => {
+              const token = prompt('Introduce el token de descarga');
+              if (token) {
+                window.open(`/api/download?token=${encodeURIComponent(token)}`, '_blank');
+              }
+            }}>Descargar logs</Button>
+          </div>
+        </Container>
       </footer>
     </>
   );
