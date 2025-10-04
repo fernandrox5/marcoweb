@@ -6,10 +6,11 @@
 export default async function handler(req, res) {
   try {
     const token = process.env.GITHUB_TOKEN;
-    const gistId = process.env.GIST_ID;
+    let gistId = process.env.GIST_ID; // may be undefined; we'll create a gist if missing
 
-    if (!token || !gistId) {
-      return res.status(500).json({ error: 'GITHUB_TOKEN and GIST_ID must be configured in environment' });
+    if (!token) {
+      console.error('Missing GITHUB_TOKEN in environment');
+      return res.status(500).json({ error: 'GITHUB_TOKEN must be configured in environment' });
     }
 
     // Determine visitor IP (best-effort behind proxies)
@@ -17,16 +18,71 @@ export default async function handler(req, res) {
     const ua = (req.headers['user-agent'] || '').toString().replace(/\n/g, ' ');
     const line = `${new Date().toISOString()} - ${ip} - ${ua}\n`;
 
+    // If no gistId configured, create a new gist with the first line and return its id
+    if (!gistId) {
+      try {
+        const createRes = await fetch('https://api.github.com/gists', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ files: { 'ips.txt': { content: line } }, public: false, description: 'IPs log (created by site)' })
+        });
+        if (!createRes.ok) {
+          const cb = await createRes.text();
+          console.error('Failed to create gist', createRes.status, cb.slice(0, 1000));
+          return res.status(500).json({ error: 'Failed to create gist', status: createRes.status, body: cb });
+        }
+        const created = await createRes.json();
+        console.log('Created gist automatically', { id: created.id });
+        // Return created gist id so the user can save it into GIST_ID env var
+        return res.status(200).json({ success: true, gistCreated: true, gistId: created.id });
+      } catch (createErr) {
+        console.error('Error creating gist', createErr);
+        return res.status(500).json({ error: 'Failed to create gist' });
+      }
+    }
+
     // Fetch existing gist
     const gistRes = await fetch(`https://api.github.com/gists/${gistId}`, {
       headers: {
-        Authorization: `token ${token}`,
+        Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json'
       }
     });
 
     if (!gistRes.ok) {
       const body = await gistRes.text();
+      console.error('Failed to fetch gist', { status: gistRes.status, body: body.slice(0, 1000) });
+
+      // If gist not found (404) try to create it automatically
+      if (gistRes.status === 404) {
+        try {
+          const createRes = await fetch('https://api.github.com/gists', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/vnd.github+json',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ files: { 'ips.txt': { content: line } }, public: false, description: 'IPs log (created by site)' })
+          });
+          if (!createRes.ok) {
+            const cb = await createRes.text();
+            console.error('Failed to create gist', createRes.status, cb.slice(0, 1000));
+            return res.status(500).json({ error: 'Failed to fetch gist and failed to create new gist', status: gistRes.status, body });
+          }
+          const created = await createRes.json();
+          console.log('Created gist automatically', { id: created.id });
+          return res.status(200).json({ success: true, gistCreated: true, gistId: created.id });
+        } catch (createErr) {
+          console.error('Error creating gist', createErr);
+          return res.status(500).json({ error: 'Failed to create gist' });
+        }
+      }
+
       return res.status(500).json({ error: 'Failed to fetch gist', status: gistRes.status, body });
     }
 
